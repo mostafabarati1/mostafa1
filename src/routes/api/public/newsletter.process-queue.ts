@@ -1,0 +1,64 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+/**
+ * نقطه پایانی cron برای پردازش صف اعلان‌های خبرنامه.
+ *
+ * فقط با هدر مخفی قابل فراخوانی است (`x-newsletter-cron-secret` یا
+ * `Authorization: Bearer <secret>`) و از همان پردازشگر صف و لایه پیامک موجود
+ * پروژه استفاده می‌کند؛ هیچ سرویس‌دهنده جدیدی اضافه نشده است.
+ * مقدار secret هرگز لاگ یا بازگردانده نمی‌شود.
+ */
+
+function isAuthorized(request: Request): boolean {
+  const expected = process.env["NEWSLETTER_CRON_SECRET"];
+  if (!expected) return false;
+
+  const header = request.headers.get("x-newsletter-cron-secret");
+  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const provided = header ?? bearer ?? "";
+  if (provided.length !== expected.length) return false;
+
+  let diff = 0;
+  for (let i = 0; i < expected.length; i += 1) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+async function handle(request: Request) {
+  if (!isAuthorized(request)) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  }
+
+  const url = new URL(request.url);
+  const limitParam = Number(url.searchParams.get("limit") ?? "50");
+  const limit = Number.isFinite(limitParam) ? Math.min(Math.max(1, limitParam), 200) : 50;
+
+  const { processSmsQueue } = await import("@/lib/newsletter/queue.server");
+
+  try {
+    const summary = await processSmsQueue(limit);
+    return new Response(JSON.stringify({ ok: true, summary }), {
+      status: 200,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "queue_failed";
+    return new Response(JSON.stringify({ ok: false, error: message }), {
+      status: 500,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  }
+}
+
+export const Route = createFileRoute("/api/public/newsletter/process-queue")({
+  server: {
+    handlers: {
+      GET: ({ request }) => handle(request),
+      POST: ({ request }) => handle(request),
+    },
+  },
+});

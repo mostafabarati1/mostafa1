@@ -1,0 +1,314 @@
+import { useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus, Trash2, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { LoadingState, EmptyState, ErrorState, PageHeader } from "@/components/data-states";
+import { humanizeError } from "@/lib/format";
+import { rpc } from "@/lib/supabase-rpc";
+
+export const Route = createFileRoute("/admin/organizations")({
+  head: () => ({
+    meta: [
+      { title: "سازمان‌ها | همراه استخدام" },
+      { name: "description", content: "مدیریت سازمان‌های برگزارکننده آزمون" },
+    ],
+  }),
+  component: OrganizationsPage,
+});
+
+type Row = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  logo_url: string | null;
+  display_order: number;
+  status: string;
+};
+
+function OrganizationsPage() {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<Row | null>(null);
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState<Row | null>(null);
+
+  const query = useQuery({
+    queryKey: ["admin-orgs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, name, slug, description, logo_url, display_order, status")
+        .order("display_order");
+      if (error) throw error;
+      return (data ?? []) as unknown as Row[];
+    },
+  });
+
+  const saveMut = useMutation({
+    mutationFn: (v: {
+      id: string | null;
+      name: string;
+      slug: string;
+      description: string;
+      display_order: number;
+      status: string;
+    }) =>
+      rpc("save_organization", {
+        p_id: v.id,
+        p_name: v.name,
+        p_slug: v.slug,
+        p_description: v.description || null,
+        p_display_order: v.display_order,
+        p_status: v.status,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin-orgs"] });
+      void qc.invalidateQueries({ queryKey: ["catalog"] });
+      setOpen(false);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => rpc("delete_organization", { p_id: id }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin-orgs"] });
+      void qc.invalidateQueries({ queryKey: ["catalog"] });
+      setDeleting(null);
+    },
+  });
+
+  const rows = query.data ?? [];
+  return (
+    <div>
+      <PageHeader
+        title="سازمان‌ها"
+        description="مدیریت سازمان‌های برگزارکننده آزمون"
+        actions={
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            سازمان جدید
+          </Button>
+        }
+      />
+      {query.isLoading ? (
+        <LoadingState rows={5} />
+      ) : query.isError ? (
+        <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+      ) : rows.length === 0 ? (
+        <EmptyState title="سازمانی ثبت نشده است" description="اولین سازمان را ایجاد کنید." />
+      ) : (
+        <div className="rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>نام</TableHead>
+                <TableHead>اسلاگ</TableHead>
+                <TableHead>ترتیب</TableHead>
+                <TableHead>وضعیت</TableHead>
+                <TableHead className="w-32">عملیات</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-medium">{r.name}</TableCell>
+                  <TableCell dir="ltr" className="text-xs text-muted-foreground">
+                    {r.slug}
+                  </TableCell>
+                  <TableCell>{r.display_order}</TableCell>
+                  <TableCell>
+                    <Badge variant={r.status === "active" ? "default" : "secondary"}>
+                      {r.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditing(r);
+                          setOpen(true);
+                        }}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={() => setDeleting(r)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? "ویرایش سازمان" : "سازمان جدید"}</DialogTitle>
+            <DialogDescription>اطلاعات سازمان را وارد کنید.</DialogDescription>
+          </DialogHeader>
+          <OrgForm
+            editing={editing}
+            error={saveMut.isError ? humanizeError(saveMut.error) : null}
+            saving={saveMut.isPending}
+            onSave={(v) => saveMut.mutate(v)}
+            onCancel={() => setOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف سازمان</AlertDialogTitle>
+            <AlertDialogDescription>
+              آیا از حذف «{deleting?.name}» مطمئن هستید؟
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>انصراف</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground"
+              onClick={() => deleting && deleteMut.mutate(deleting.id)}
+            >
+              {deleteMut.isPending ? <Loader2 className="size-4 animate-spin" /> : "حذف"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function OrgForm(props: {
+  editing: Row | null;
+  error: string | null;
+  saving: boolean;
+  onSave: (v: {
+    id: string | null;
+    name: string;
+    slug: string;
+    description: string;
+    display_order: number;
+    status: string;
+  }) => void;
+  onCancel: () => void;
+}) {
+  const { editing, error, saving, onSave, onCancel } = props;
+  const [name, setName] = useState(editing?.name ?? "");
+  const [slug, setSlug] = useState(editing?.slug ?? "");
+  const [desc, setDesc] = useState(editing?.description ?? "");
+  const [order, setOrder] = useState(editing?.display_order ?? 0);
+  const [status, setStatus] = useState(editing?.status ?? "active");
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!name.trim() || !slug.trim()) return;
+        onSave({
+          id: editing?.id ?? null,
+          name: name.trim(),
+          slug: slug.trim(),
+          description: desc,
+          display_order: Number(order) || 0,
+          status,
+        });
+      }}
+    >
+      <div className="space-y-2">
+        <Label>نام</Label>
+        <Input required value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label>اسلاگ</Label>
+        <Input required dir="ltr" value={slug} onChange={(e) => setSlug(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label>توضیحات</Label>
+        <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>ترتیب</Label>
+          <Input type="number" value={order} onChange={(e) => setOrder(Number(e.target.value))} />
+        </div>
+        <div className="space-y-2">
+          <Label>وضعیت</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">فعال</SelectItem>
+              <SelectItem value="inactive">غیرفعال</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          انصراف
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <Loader2 className="size-4 animate-spin" /> : editing ? "ذخیره" : "ایجاد"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
