@@ -1,0 +1,3 @@
+DROP FUNCTION IF EXISTS public.__setup_exec_sql(text);
+DROP FUNCTION IF EXISTS public.__setup_exec_ignore(text);
+DROP FUNCTION IF EXISTS public.__bootstrap_exec(text);

@@ -1,0 +1,1 @@
+-- skipped: Lovable full-schema re-sync bundle (redundant with earlier idempotent migrations already applied)

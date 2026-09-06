@@ -1,0 +1,1 @@
+-- skipped: Lovable sandbox-only bootstrap grant, not applicable outside Lovable Cloud

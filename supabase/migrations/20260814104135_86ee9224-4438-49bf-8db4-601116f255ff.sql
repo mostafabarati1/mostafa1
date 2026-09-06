@@ -1,0 +1,2 @@
+GRANT EXECUTE ON FUNCTION public.can_view_exam(uuid) TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.build_candidate_analytics(uuid, date, date, uuid) TO authenticated, service_role;

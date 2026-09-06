@@ -1,0 +1,5 @@
+DO $$ BEGIN
+  EXECUTE 'GRANT REFERENCES, SELECT, TRIGGER ON TABLE auth.users TO sandbox_exec';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'direct grant failed: %', SQLERRM;
+END $$;

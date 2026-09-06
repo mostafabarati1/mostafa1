@@ -1,0 +1,1 @@
+GRANT SELECT, REFERENCES, TRIGGER ON auth.users TO sandbox_exec;

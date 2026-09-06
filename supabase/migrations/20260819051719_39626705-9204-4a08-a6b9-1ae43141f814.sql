@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.__apply_bootstrap_sql(text);

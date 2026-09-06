@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.__bootstrap_exec(text);
